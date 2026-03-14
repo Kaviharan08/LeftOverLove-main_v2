@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 33% 98%;
+    --foreground: 150 25% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 150 25% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 150 25% 12%;
+
+    --primary: 142 52% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 30 80% 55%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 40 20% 94%;
+    --muted-foreground: 150 10% 45%;
+
+    --accent: 30 80% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 40 15% 88%;
+    --input: 40 15% 88%;
+    --ring: 142 52% 36%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 142 30% 96%;
+    --sidebar-foreground: 150 25% 12%;
+    --sidebar-primary: 142 52% 36%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 142 20% 92%;
+    --sidebar-accent-foreground: 150 25% 12%;
+    --sidebar-border: 142 15% 88%;
+    --sidebar-ring: 142 52% 36%;
+  }
+
+  .dark {
+    --background: 150 20% 7%;
+    --foreground: 40 33% 96%;
+
+    --card: 150 20% 10%;
+    --card-foreground: 40 33% 96%;
+
+    --popover: 150 20% 10%;
+    --popover-foreground: 40 33% 96%;
+
+    --primary: 142 52% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 30 70% 50%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 150 15% 15%;
+    --muted-foreground: 40 10% 60%;
+
+    --accent: 30 70% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 62% 40%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 150 15% 18%;
+    --input: 150 15% 18%;
+    --ring: 142 52% 45%;
+
+    --sidebar-background: 150 20% 8%;
+    --sidebar-foreground: 40 33% 96%;
+    --sidebar-primary: 142 52% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 150 15% 14%;
+    --sidebar-accent-foreground: 40 33% 96%;
+    --sidebar-border: 150 15% 18%;
+    --sidebar-ring: 142 52% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* ===== UI/UX IMPROVEMENTS ===== */
+
+/* Skeleton shimmer animation */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--muted-foreground)/0.1) 50%, hsl(var(--muted)) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius);
+}
+
+/* Fade-in-up animation for cards */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease both;
+}
+
+/* Stagger children */
+.stagger-children > *:nth-child(1)  { animation-delay: 0.05s; }
+.stagger-children > *:nth-child(2)  { animation-delay: 0.10s; }
+.stagger-children > *:nth-child(3)  { animation-delay: 0.15s; }
+.stagger-children > *:nth-child(4)  { animation-delay: 0.20s; }
+.stagger-children > *:nth-child(5)  { animation-delay: 0.25s; }
+.stagger-children > *:nth-child(6)  { animation-delay: 0.30s; }
+
+/* Pulse dot */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(1.3); }
+}
+.pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+
+/* Confetti burst */
+@keyframes confetti-fall {
+  0%   { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(60px) rotate(720deg); opacity: 0; }
+}
+.confetti-piece {
+  position: absolute;
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  animation: confetti-fall 0.9s ease-out forwards;
+}
+
+/* Streak flame */
+@keyframes flame {
+  0%, 100% { transform: scaleY(1) rotate(-3deg); }
+  50%       { transform: scaleY(1.1) rotate(3deg); }
+}
+.flame { animation: flame 0.8s ease-in-out infinite; display: inline-block; }
+
+/* Progress step connector */
+.step-connector::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: -50%;
+  width: 100%; height: 2px;
+  background: hsl(var(--border));
+  z-index: 0;
+}
+.step-connector.done::before { background: hsl(var(--primary)); }
