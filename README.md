@@ -45,7 +45,7 @@
 
 **1. Clone the repository**
 ```bash
-git clone https://github.com/Himas04/LeftOverLove.git
+https://github.com/Kaviharan08/LeftOverLove-main_v2.git
 cd LeftOverLove
 ```
 
