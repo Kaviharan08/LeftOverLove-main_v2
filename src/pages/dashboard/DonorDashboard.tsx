@@ -17,9 +17,23 @@ import { fetchMyListings, deleteFoodListing } from "@/lib/food-listings";
 import { fetchRequestsForDonor, statusLabel, statusColor, type PickupRequest } from "@/lib/pickup-requests";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Trash2, MapPin, Package, TrendingUp, CalendarDays, AlertTriangle } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import type { Tables } from "@/integrations/supabase/types";
 import donorBanner from "@/assets/donor-banner.jpg";
+
+const CAT_COLORS: Record<string, string> = {
+  cooked: "#1E7A5F", raw: "#2D9C78", packaged: "#5BC49A",
+  baked: "#F59E0B", beverages: "#3B82F6", other: "#9CA3AF",
+};
+const STS_COLORS: Record<string, string> = {
+  accepted: "#1E7A5F", expired: "#EF4444",
+};
+function pctLabel(o: any): string {
+  return o.percent > 0.05 ? String(Math.round(o.percent * 100)) + "%" : "";
+}
+function fmtLegend(value: any): string {
+  return String(value);
+}
 
 export default function DonorDashboard() {
   const { user } = useAuth();
@@ -115,6 +129,27 @@ export default function DonorDashboard() {
   }, [listings, chartView]);
 
   const trackableRequest = requests.find((r) => ["volunteer_accepted", "picked_up"].includes(r.status));
+
+  const categoryChartData = useMemo(() => {
+    const counts: Record<string, number> = {};
+    listings.forEach((l) => {
+      const cat = (l as any).category || "other";
+      counts[cat] = (counts[cat] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([k, v]) => ({ name: k.charAt(0).toUpperCase() + k.slice(1), value: v, key: k }))
+      .filter((d) => d.value > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [listings]);
+
+  const statusChartData = useMemo(() => {
+    const acc = listings.filter((l) => l.status === "completed" || confirmedListingIds.has(l.id)).length;
+    const exp = listings.filter((l) => l.status === "expired").length;
+    return [
+      { name: "Accepted", value: acc, key: "accepted" },
+      { name: "Expired",  value: exp, key: "expired"  },
+    ].filter((d) => d.value > 0);
+  }, [listings, confirmedListingIds]);
 
   const statCards = [
     { label: "Active Listings", value: active, color: "text-primary" },
@@ -225,6 +260,55 @@ export default function DonorDashboard() {
               </ResponsiveContainer>
             </CardContent>
           </Card>
+
+          {/* Pie charts */}
+          <div className="grid gap-4 sm:grid-cols-2 mt-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Food Type Breakdown</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {categoryChartData.length === 0 ? (
+                  <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">No donations yet</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie data={categoryChartData} cx="50%" cy="50%" outerRadius={70} dataKey="value" labelLine={false} label={pctLabel}>
+                        {categoryChartData.map((entry) => (
+                          <Cell key={entry.key} fill={CAT_COLORS[entry.key] || "#9CA3AF"} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend formatter={fmtLegend} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Accepted vs Expired</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {statusChartData.length === 0 ? (
+                  <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">No completed or expired listings yet</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie data={statusChartData} cx="50%" cy="50%" outerRadius={70} dataKey="value" labelLine={false} label={pctLabel}>
+                        {statusChartData.map((entry) => (
+                          <Cell key={entry.key} fill={STS_COLORS[entry.key] || "#9CA3AF"} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend formatter={fmtLegend} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
         {/* Impact */}
@@ -299,7 +383,8 @@ export default function DonorDashboard() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger-children">
             {listings.map((listing) => {
               const hasConfirmedRequest = requests.some((r) => r.listing_id === listing.id && r.status === "confirmed");
-              const displayStatus = hasConfirmedRequest ? "completed" : listing.status;
+              const hasActiveRequest    = requests.some((r) => r.listing_id === listing.id && !["cancelled", "confirmed"].includes(r.status));
+              const displayStatus = hasConfirmedRequest ? "completed" : hasActiveRequest ? "claimed" : listing.status;
               const badgeClass =
                 displayStatus === "available"    ? "bg-primary text-primary-foreground" :
                 displayStatus === "completed"    ? "bg-green-600 text-white" :

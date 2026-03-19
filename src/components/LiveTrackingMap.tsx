@@ -31,6 +31,23 @@ const deliveryIcon = L.divIcon({
   iconAnchor: [7, 7],
 });
 
+// Fetch real road route from OSRM (free, no API key)
+async function fetchRoadRoute(points: [number, number][]): Promise<[number, number][]> {
+  if (points.length < 2) return points;
+  try {
+    const coords = points.map(([lat, lng]) => `${lng},${lat}`).join(";");
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+    const res = await fetch(url);
+    if (!res.ok) return points;
+    const data = await res.json();
+    if (data.code !== "Ok" || !data.routes?.[0]?.geometry?.coordinates) return points;
+    // OSRM returns [lng, lat] — swap to [lat, lng] for Leaflet
+    return data.routes[0].geometry.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
+  } catch {
+    return points; // fallback to straight line on error
+  }
+}
+
 interface LiveTrackingMapProps {
   requestId: string;
   pickupLat?: number | null;
@@ -57,13 +74,13 @@ export function LiveTrackingMap({
   const [liveLat, setLiveLat] = useState(volunteerLat);
   const [liveLng, setLiveLng] = useState(volunteerLng);
 
-  // Sync prop changes to state (parent re-fetch updates)
+  // Sync prop changes
   useEffect(() => {
     if (volunteerLat != null) setLiveLat(volunteerLat);
     if (volunteerLng != null) setLiveLng(volunteerLng);
   }, [volunteerLat, volunteerLng]);
 
-  // Subscribe to realtime volunteer location updates
+  // Realtime volunteer location
   useEffect(() => {
     const channel = supabase
       .channel(`tracking-${requestId}`)
@@ -80,7 +97,6 @@ export function LiveTrackingMap({
         }
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [requestId]);
 
@@ -94,24 +110,24 @@ export function LiveTrackingMap({
     if (deliveryLat && deliveryLng) points.push([deliveryLat, deliveryLng]);
     if (liveLat && liveLng) points.push([liveLat, liveLng]);
 
-    const center: [number, number] = points.length > 0 ? points[0] : [28.6139, 77.209];
+    const center: [number, number] = points.length > 0 ? points[0] : [6.9271, 79.8612];
 
-    const map = L.map(mapRef.current).setView(center, 14);
+    const map = L.map(mapRef.current, {
+      // Fix z-index: prevent map controls from overlapping page UI
+      zoomControl: true,
+    }).setView(center, 14);
+
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      attribution: 'Leaflet | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
 
-    // Pickup (donor) marker
     if (pickupLat && pickupLng) {
       L.marker([pickupLat, pickupLng], { icon: pickupIcon }).addTo(map).bindPopup("Pickup (Donor)");
     }
-
-    // Delivery (receiver) marker
     if (deliveryLat && deliveryLng) {
       L.marker([deliveryLat, deliveryLng], { icon: deliveryIcon }).addTo(map).bindPopup("Delivery (Receiver)");
     }
 
-    // Fit bounds if multiple points
     if (points.length >= 2) {
       map.fitBounds(L.latLngBounds(points.map(p => L.latLng(p[0], p[1]))), { padding: [40, 40] });
     }
@@ -121,7 +137,7 @@ export function LiveTrackingMap({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickupLat, pickupLng, deliveryLat, deliveryLng]);
 
-  // Update volunteer marker and route line in real time
+  // Update volunteer marker and road route
   useEffect(() => {
     if (!mapInstance.current || liveLat == null || liveLng == null) return;
 
@@ -134,44 +150,54 @@ export function LiveTrackingMap({
         .bindPopup("Volunteer");
     }
 
-    // Update route polyline: pickup → volunteer → delivery
+    // Build route points: pickup → volunteer → delivery
     const routePoints: [number, number][] = [];
     if (pickupLat && pickupLng) routePoints.push([pickupLat, pickupLng]);
     routePoints.push([liveLat, liveLng]);
     if (deliveryLat && deliveryLng) routePoints.push([deliveryLat, deliveryLng]);
 
     if (routePoints.length >= 2) {
-      if (routeLine.current) {
-        routeLine.current.setLatLngs(routePoints);
-      } else {
-        routeLine.current = L.polyline(routePoints, {
-          color: "hsl(221,83%,53%)",
-          weight: 3,
-          opacity: 0.7,
-          dashArray: "8 6",
-        }).addTo(mapInstance.current);
-      }
+      // Fetch real road route from OSRM
+      fetchRoadRoute(routePoints).then((roadCoords) => {
+        if (!mapInstance.current) return;
+        if (routeLine.current) {
+          routeLine.current.setLatLngs(roadCoords);
+        } else {
+          routeLine.current = L.polyline(roadCoords, {
+            color: "hsl(221,83%,53%)",
+            weight: 4,
+            opacity: 0.8,
+          }).addTo(mapInstance.current);
+        }
+      });
     }
   }, [liveLat, liveLng, pickupLat, pickupLng, deliveryLat, deliveryLng]);
 
   const isTrackable = ["volunteer_accepted", "picked_up"].includes(status);
-
   if (!isTrackable && !liveLat) return null;
 
   return (
-    <div className={className}>
+    // ── FIX: relative + isolate keeps Leaflet z-index contained ──
+    <div className={`relative isolate ${className ?? ""}`}>
       <div className="mb-2 flex items-center gap-2 text-sm font-medium">
         <span className="relative flex h-3 w-3">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span>
-          <span className="relative inline-flex h-3 w-3 rounded-full bg-green-500"></span>
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+          <span className="relative inline-flex h-3 w-3 rounded-full bg-green-500" />
         </span>
         Live Tracking
       </div>
-      <div ref={mapRef} className="h-[300px] w-full rounded-lg border" />
+      {/* z-[1] keeps the map tile layer below page modals/nav */}
+      <div ref={mapRef} className="h-[300px] w-full rounded-lg border relative z-[1]" />
       <div className="mt-2 flex gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "hsl(25,95%,53%)" }} /> Donor</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "hsl(221,83%,53%)" }} /> Volunteer</span>
-        <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "hsl(142,52%,36%)" }} /> Receiver</span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "hsl(25,95%,53%)" }} /> Donor
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "hsl(221,83%,53%)" }} /> Volunteer
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: "hsl(142,52%,36%)" }} /> Receiver
+        </span>
       </div>
     </div>
   );
