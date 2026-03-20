@@ -45,7 +45,22 @@ export default function ReceiverDashboard() {
     Promise.all([
       fetchFoodListings("available"),
       fetchRequestsForReceiver(user.id),
-    ]).then(([l, r]) => { setListings(l); setRequests(r); }).catch(() => {}).finally(() => setLoading(false));
+    ]).then(([l, r]) => {
+      const now = new Date();
+      // Build set of listing IDs this user has active (non-cancelled) requests for
+      const activeRequestedIds = new Set(
+        r.filter((req) => req.status !== "cancelled").map((req) => req.listing_id)
+      );
+      // Only show truly available, non-expired listings that aren't already claimed by this user
+      const activeFoods = l.filter(
+        (listing) =>
+          listing.status === "available" &&
+          (!listing.expires_at || new Date(listing.expires_at) > now) &&
+          !activeRequestedIds.has(listing.id)
+      );
+      setListings(activeFoods);
+      setRequests(r);
+    }).catch(() => {}).finally(() => setLoading(false));
   }, [user]);
 
   useEffect(() => { loadData(); }, [loadData]);
@@ -116,7 +131,12 @@ export default function ReceiverDashboard() {
     setPrevCompleted(completedRequests.length);
   }, [completedRequests.length]);
 
-  const myRequestedListingIds = new Set(requests.filter((r) => r.status !== "cancelled").map((r) => r.listing_id));
+  // Exclude active + completed requests but NOT cancelled — cancelled means food is available again
+  const myRequestedListingIds = new Set(
+    requests
+      .filter((r) => r.status !== "cancelled")
+      .map((r) => r.listing_id)
+  );
   const availableListings = listings.filter((l) => !myRequestedListingIds.has(l.id));
 
   const statCards = [
@@ -192,13 +212,13 @@ export default function ReceiverDashboard() {
           loading={volunteerRequesting}
         />
 
-        {/* My Requests */}
-        {requests.length > 0 && (
+        {/* My Requests — active only shown by default */}
+        {activeRequests.length > 0 && (
           <>
             <h2 className="mb-4 text-xl font-semibold flex items-center gap-2"><Package className="h-5 w-5" /> My Requests</h2>
-            <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger-children">
-              {requests.map((req) => (
-                <Card key={req.id} className={`animate-fade-in-up transition-shadow hover:shadow-md ${req.status === "cancelled" ? "opacity-50" : ""}`}>
+            <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger-children">
+              {activeRequests.map((req) => (
+                <Card key={req.id} className="animate-fade-in-up transition-shadow hover:shadow-md">
                   <CardContent className="p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold line-clamp-1 cursor-pointer hover:text-primary" onClick={() => navigate(`/food/${req.listing_id}`)}>
@@ -261,6 +281,30 @@ export default function ReceiverDashboard() {
               ))}
             </div>
           </>
+        )}
+
+        {/* Past requests — collapsed by default */}
+        {completedRequests.length > 0 && (
+          <details className="mb-8">
+            <summary className="mb-3 cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground select-none">
+              View past requests ({completedRequests.length} completed)
+            </summary>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {completedRequests.map((req) => (
+                <Card key={req.id} className="opacity-60">
+                  <CardContent className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold line-clamp-1 text-sm cursor-pointer hover:text-primary" onClick={() => navigate(`/food/${req.listing_id}`)}>
+                        {req.food_listings?.title || "Listing"}
+                      </h3>
+                      <Badge className="bg-green-700 text-white shrink-0 text-xs">Completed</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Requested {formatSLDate(req.created_at)}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </details>
         )}
 
         {/* Smart Recommendations */}

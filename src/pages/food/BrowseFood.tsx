@@ -48,9 +48,8 @@ export default function BrowseFood() {
   useEffect(() => {
     if (!user || (role !== "receiver" && role !== "ngo")) return;
     fetchRequestsForReceiver(user.id).then((reqs) => {
-      const ids = new Set(
-        reqs.filter((r) => r.status !== "cancelled").map((r) => r.listing_id)
-      );
+      // Only exclude active + completed — cancelled means food is available again
+      const ids = new Set(reqs.filter((r) => r.status !== "cancelled").map((r) => r.listing_id));
       setClaimedListingIds(ids);
     }).catch(() => {});
   }, [user, role]);
@@ -59,12 +58,9 @@ export default function BrowseFood() {
     supabase.rpc("archive_expired_listings").then(() => {});
 
     const now = new Date();
-    Promise.all([
-      fetchFoodListings("available"),
-      fetchFoodListings("expiring_soon"),
-    ]).then(([avail, expiringSoon]) => {
-      // Only show listings that are not yet expired
-      const active = [...avail, ...expiringSoon].filter(
+    // Only fetch truly "available" listings — excludes claimed/completed by anyone
+    fetchFoodListings("available").then((avail) => {
+      const active = avail.filter(
         (l) => !l.expires_at || new Date(l.expires_at) > now
       );
       setListings(active);

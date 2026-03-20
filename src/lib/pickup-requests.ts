@@ -32,27 +32,61 @@ export type PickupRequest = {
 };
 
 const REQUEST_SELECT = "*, food_listings(id, title, pickup_address, image_url, donor_id, status, latitude, longitude)";
+const REQUEST_UPDATE_SELECT = "*"; // Use plain * for updates — joined selects cause 406 on some DB configs
+// Use this simpler select for UPDATE operations to avoid 406 errors from joined table RLS
+const UPDATE_SELECT = "*";
 
 /**
  * Receiver accepts a food listing — no donor approval needed.
  * Status goes straight to "accepted", listing becomes "claimed".
+ * Double-checks for existing active requests to prevent duplicate claims.
  */
 export async function createPickupRequest(listingId: string, receiverId: string, note?: string) {
+  // Step 1: Check listing status
+  const { data: current, error: fetchError } = await supabase
+    .from("food_listings")
+    .select("id, donor_id, title, status")
+    .eq("id", listingId)
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
+  if (!current || !["available", "expiring_soon"].includes((current as any).status)) {
+    throw new Error("This food has already been claimed by someone else. Please browse for other available food.");
+  }
+
+  // Step 2: Check no active request already exists for this listing (catches race between receiver + NGO)
+  const { data: existingReq } = await supabase
+    .from("pickup_requests")
+    .select("id")
+    .eq("listing_id", listingId)
+    .neq("status", "cancelled")
+    .maybeSingle();
+
+  if (existingReq) {
+    await supabase.from("food_listings").update({ status: "claimed" as any }).eq("id", listingId);
+    throw new Error("This food has already been claimed by someone else. Please browse for other available food.");
+  }
+
+  // Step 3: Insert the request
   const { data, error } = await supabase
     .from("pickup_requests")
     .insert({ listing_id: listingId, receiver_id: receiverId, note: note || null, status: "accepted", self_pickup: true } as any)
-    .select("*, food_listings(donor_id, title)")
-    .single();
-  if (error) throw error;
+    .select(REQUEST_UPDATE_SELECT)
+    .maybeSingle();
 
-  const { error: claimRpcError } = await supabase.rpc("update_listing_status", { p_listing_id: listingId, p_new_status: "claimed" });
-  if (claimRpcError) {
-    await supabase.from("food_listings").update({ status: "claimed" as any }).eq("id", listingId);
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error("This food has already been claimed by someone else. Please browse for other available food.");
+    }
+    throw error;
   }
 
-  const donorId = (data as any)?.food_listings?.donor_id;
+  // Step 4: Mark listing as claimed
+  await supabase.from("food_listings").update({ status: "claimed" as any }).eq("id", listingId);
+
+  const donorId = (current as any).donor_id;
   if (donorId) {
-    await createNotification(donorId, "new_request", "Food accepted", `Someone accepted "${(data as any)?.food_listings?.title}"`, `/food/${listingId}`);
+    await createNotification(donorId, "new_request", "Food accepted", `Someone accepted "${(current as any).title}"`, `/food/${listingId}`);
   }
   return data;
 }
@@ -68,9 +102,10 @@ export async function requestVolunteer(requestId: string, deliveryLat?: number, 
     .from("pickup_requests")
     .update(update as any)
     .eq("id", requestId)
-    .select(REQUEST_SELECT)
-    .single();
+    .select(REQUEST_UPDATE_SELECT)
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error("Could not update request — please try again.");
   return data;
 }
 
@@ -80,13 +115,13 @@ export async function volunteerAcceptRequest(requestId: string, volunteerId: str
     .from("pickup_requests")
     .update({ volunteer_id: volunteerId, status: "volunteer_accepted" as any } as any)
     .eq("id", requestId)
-    .select("*, food_listings(title)")
-    .single();
+    .select(REQUEST_UPDATE_SELECT)
+    .maybeSingle();
   if (error) throw error;
 
   const receiverId = (data as any)?.receiver_id;
   if (receiverId) {
-    await createNotification(receiverId, "volunteer_accepted", "Volunteer assigned!", `A volunteer accepted your delivery for "${(data as any)?.food_listings?.title}"`);
+    await createNotification(receiverId, "volunteer_accepted", "Volunteer assigned!", "A volunteer accepted your delivery request!");
   }
   return data;
 }
@@ -106,13 +141,13 @@ export async function markPickedUp(requestId: string) {
     .from("pickup_requests")
     .update({ status: "picked_up" as any } as any)
     .eq("id", requestId)
-    .select("*, food_listings(title)")
-    .single();
+    .select(REQUEST_UPDATE_SELECT)
+    .maybeSingle();
   if (error) throw error;
 
   const receiverId = (data as any)?.receiver_id;
   if (receiverId) {
-    await createNotification(receiverId, "status_picked_up", "Food picked up!", `Your food "${(data as any)?.food_listings?.title}" has been picked up and is on the way!`);
+    await createNotification(receiverId, "status_picked_up", "Food picked up!", "Your food has been picked up and is on the way!");
   }
   return data;
 }
@@ -123,13 +158,13 @@ export async function markDelivered(requestId: string) {
     .from("pickup_requests")
     .update({ status: "delivered" as any } as any)
     .eq("id", requestId)
-    .select("*, food_listings(title)")
-    .single();
+    .select(REQUEST_UPDATE_SELECT)
+    .maybeSingle();
   if (error) throw error;
 
   const receiverId = (data as any)?.receiver_id;
   if (receiverId) {
-    await createNotification(receiverId, "status_delivered", "Food delivered!", `Your food "${(data as any)?.food_listings?.title}" has been delivered! Please confirm receipt.`);
+    await createNotification(receiverId, "status_delivered", "Food delivered!", "Your food has been delivered! Please confirm receipt.");
   }
   return data;
 }
@@ -140,21 +175,17 @@ export async function confirmDelivery(requestId: string) {
     .from("pickup_requests")
     .update({ status: "confirmed" as any } as any)
     .eq("id", requestId)
-    .select("*, food_listings(id, title, donor_id)")
-    .single();
+    .select(REQUEST_UPDATE_SELECT)
+    .maybeSingle();
   if (error) throw error;
 
-  if ((data as any)?.food_listings?.id) {
-    const { error: rpcError } = await supabase.rpc("update_listing_status", { p_listing_id: (data as any).food_listings.id, p_new_status: "completed" });
-    // Fallback: try direct update (works if caller is donor or RLS allows it)
-    if (rpcError) {
-      await supabase.from("food_listings").update({ status: "completed" as any }).eq("id", (data as any).food_listings.id);
+  const listingId = (data as any)?.listing_id;
+  if (listingId) {
+    await supabase.from("food_listings").update({ status: "completed" as any }).eq("id", listingId);
+    const { data: listing } = await supabase.from("food_listings").select("donor_id, title").eq("id", listingId).maybeSingle();
+    if ((listing as any)?.donor_id) {
+      await createNotification((listing as any).donor_id, "delivery_confirmed", "Delivery confirmed!", `"${(listing as any).title}" was successfully delivered and confirmed.`);
     }
-  }
-
-  const donorId = (data as any)?.food_listings?.donor_id;
-  if (donorId) {
-    await createNotification(donorId, "delivery_confirmed", "Delivery confirmed!", `"${(data as any)?.food_listings?.title}" was successfully delivered and confirmed.`);
   }
   return data;
 }
@@ -165,21 +196,17 @@ export async function completeSelfPickup(requestId: string) {
     .from("pickup_requests")
     .update({ status: "confirmed" as any } as any)
     .eq("id", requestId)
-    .select("*, food_listings(id, title, donor_id)")
-    .single();
+    .select(REQUEST_UPDATE_SELECT)
+    .maybeSingle();
   if (error) throw error;
 
-  if ((data as any)?.food_listings?.id) {
-    const { error: rpcError } = await supabase.rpc("update_listing_status", { p_listing_id: (data as any).food_listings.id, p_new_status: "completed" });
-    // Fallback: try direct update (works if caller is donor or RLS allows it)
-    if (rpcError) {
-      await supabase.from("food_listings").update({ status: "completed" as any }).eq("id", (data as any).food_listings.id);
+  const listingId2 = (data as any)?.listing_id;
+  if (listingId2) {
+    await supabase.from("food_listings").update({ status: "completed" as any }).eq("id", listingId2);
+    const { data: listing2 } = await supabase.from("food_listings").select("donor_id, title").eq("id", listingId2).maybeSingle();
+    if ((listing2 as any)?.donor_id) {
+      await createNotification((listing2 as any).donor_id, "self_pickup_completed", "Self-pickup completed!", `"${(listing2 as any).title}" was picked up and confirmed by the receiver.`);
     }
-  }
-
-  const donorId = (data as any)?.food_listings?.donor_id;
-  if (donorId) {
-    await createNotification(donorId, "self_pickup_completed", "Self-pickup completed!", `"${(data as any)?.food_listings?.title}" was picked up and confirmed by the receiver.`);
   }
   return data;
 }
@@ -191,7 +218,7 @@ export async function cancelRequest(requestId: string, listingId: string) {
     .update({ status: "cancelled" as any } as any)
     .eq("id", requestId);
   if (error) throw error;
-  const { error: cancelRpcError } = await supabase.rpc("update_listing_status", { p_listing_id: listingId, p_new_status: "available" });
+  const { error: cancelRpcError } = await (supabase as any).rpc("update_listing_status", { p_listing_id: listingId, p_new_status: "available" });
   if (cancelRpcError) {
     await supabase.from("food_listings").update({ status: "available" as any }).eq("id", listingId);
   }

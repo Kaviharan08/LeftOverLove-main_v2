@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
-type AppRole = "admin" | "donor" | "receiver" | "volunteer";
+type AppRole = "admin" | "donor" | "receiver" | "volunteer" | "ngo";
 
 interface AuthContextType {
   user: User | null;
@@ -129,12 +129,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
 
-    // Check if user is banned
+    // Check if user is banned (use maybeSingle in case profile doesn't exist yet)
     const { data: profile } = await supabase
       .from("profiles")
       .select("is_banned, ban_reason")
       .eq("user_id", data.user.id)
-      .single();
+      .maybeSingle();
 
     if (profile?.is_banned) {
       await supabase.auth.signOut();

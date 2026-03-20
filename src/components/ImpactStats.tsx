@@ -42,14 +42,14 @@ export function ImpactStats({ userId, role, variant = "full" }: ImpactStatsProps
             .from("pickup_requests")
             .select("*, food_listings!inner(donor_id)", { count: "exact", head: true })
             .eq("food_listings.donor_id", userId)
-            .in("status", ["delivered", "confirmed"] as any);
+            .or("status.eq.delivered,status.eq.confirmed");
           completedDeliveries = completedCount ?? 0;
         } else if (role === "receiver" && userId) {
           const { count: receivedCount } = await supabase
             .from("pickup_requests")
             .select("*", { count: "exact", head: true })
             .eq("receiver_id", userId)
-            .in("status", ["delivered", "confirmed"] as any);
+            .or("status.eq.delivered,status.eq.confirmed");
           completedDeliveries = receivedCount ?? 0;
           totalListings = completedDeliveries;
         } else if (role === "volunteer" && userId) {
@@ -57,7 +57,7 @@ export function ImpactStats({ userId, role, variant = "full" }: ImpactStatsProps
             .from("pickup_requests")
             .select("*", { count: "exact", head: true })
             .eq("volunteer_id", userId)
-            .in("status", ["delivered", "confirmed"] as any);
+            .or("status.eq.delivered,status.eq.confirmed");
           completedDeliveries = deliveredCount ?? 0;
           totalListings = completedDeliveries;
         } else if (role === "ngo" && userId) {
@@ -65,7 +65,7 @@ export function ImpactStats({ userId, role, variant = "full" }: ImpactStatsProps
             .from("pickup_requests")
             .select("*", { count: "exact", head: true })
             .eq("receiver_id", userId)
-            .in("status", ["delivered", "confirmed"] as any);
+            .or("status.eq.delivered,status.eq.confirmed");
           completedDeliveries = receivedCount ?? 0;
           totalListings = completedDeliveries;
         } else {
@@ -78,7 +78,7 @@ export function ImpactStats({ userId, role, variant = "full" }: ImpactStatsProps
           const { count: deliveredCount } = await supabase
             .from("pickup_requests")
             .select("*", { count: "exact", head: true })
-            .in("status", ["delivered", "confirmed"] as any);
+            .or("status.eq.delivered,status.eq.confirmed");
           completedDeliveries = deliveredCount ?? 0;
         }
 

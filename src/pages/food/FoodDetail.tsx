@@ -38,13 +38,28 @@ export default function FoodDetail() {
   useEffect(() => {
     if (!id) return;
     supabase.rpc("archive_expired_listings").then(() => {});
-    fetchListingById(id).then((data) => {
+    fetchListingById(id).then(async (data) => {
+      // If listing is "claimed" but has no active pickup request, it's stuck — reset to available
+      if ((data as any).status === "claimed") {
+        const { data: activeReq } = await supabase
+          .from("pickup_requests")
+          .select("id")
+          .eq("listing_id", id)
+          .neq("status", "cancelled")
+          .maybeSingle();
+        if (!activeReq) {
+          // No active request — orphaned claimed listing, reset it
+          await supabase.from("food_listings").update({ status: "available" as any }).eq("id", id);
+          setListing({ ...data, status: "available" });
+          setLoading(false);
+          return;
+        }
+      }
       // Only apply expiry logic to available/expiring_soon listings
-      // Never change claimed, completed, delivered, cancelled, or picked_up statuses
       const expiryEligible = ["available", "expiring_soon"];
       if (data.expires_at && new Date(data.expires_at) < new Date() && expiryEligible.includes(data.status)) {
         setListing({ ...data, status: "expired" });
-        supabase.rpc("update_listing_status", { p_listing_id: id, p_new_status: "expired" }).then(() => {});
+        (supabase as any).rpc("update_listing_status", { p_listing_id: id, p_new_status: "expired" }).then(() => {});
       } else {
         setListing(data);
       }
@@ -59,7 +74,7 @@ export default function FoodDetail() {
   // Expiry logic only applies to available/expiring_soon — never to claimed, completed, delivered, cancelled
   const expiryRelevant = listing && ["available", "expiring_soon", "expired"].includes(listing.status);
   const isExpired = expiryRelevant && (listing?.status === "expired" || (listing?.expires_at && new Date(listing.expires_at) < new Date()));
-  const isExpiringSoon = expiryRelevant && (listing?.status === "expiring_soon" || (listing?.expires_at && !isExpired && (new Date(listing.expires_at).getTime() - Date.now()) < 2 * 60 * 60 * 1000));
+  const isExpiringSoon = expiryRelevant && (listing?.status === "expiring_soon" || (typeof listing?.expires_at === "string" && !isExpired && (new Date(listing.expires_at).getTime() - Date.now()) < 2 * 60 * 60 * 1000));
   const showExpiryWarnings = listing && ["available", "expiring_soon"].includes(listing.status);
 
   const handleRequest = async () => {
@@ -71,7 +86,13 @@ export default function FoodDetail() {
       setListing({ ...listing, status: "claimed" as any });
       setShowNote(false);
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      // If already claimed by someone else, update UI immediately to reflect that
+      if (err.message?.includes("already been claimed")) {
+        setListing({ ...listing, status: "claimed" as any });
+        toast({ title: "Already claimed", description: "Someone just claimed this food. Browse for other available items.", variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      }
     } finally {
       setRequesting(false);
     }
@@ -208,7 +229,7 @@ export default function FoodDetail() {
               )}
 
               {/* Request Pickup — disabled if expired */}
-              {(listing.status === "available" || listing.status === "expiring_soon") && !isExpired && (role === "receiver" || (role as string) === "ngo") && (
+              {(listing.status === "available" || listing.status === "expiring_soon") && !isExpired && (role === "receiver" || role === "ngo") && (
                 <div className="space-y-3">
                   {!showNote ? (
                     <Button className="w-full" size="lg" onClick={() => setShowNote(true)}>

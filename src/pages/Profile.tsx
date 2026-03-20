@@ -27,7 +27,7 @@ export default function Profile() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("profiles").select("*").eq("user_id", user.id).single().then(({ data }) => {
+    supabase.from("profiles").select("*").eq("user_id", user.id).maybeSingle().then(({ data }) => {
       if (data) {
         setName(data.name ?? "");
         setPhone(data.phone ?? "");

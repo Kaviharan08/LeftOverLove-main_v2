@@ -39,7 +39,17 @@ export default function NGODashboard() {
       fetchRequestsForReceiver(user.id),
       supabase.from("organizations").select("*").eq("user_id", user.id).maybeSingle(),
     ]).then(([l, r, orgRes]) => {
-      setListings(l);
+      const now = new Date();
+      const activeRequestedIds = new Set(
+        r.filter((req) => req.status !== "cancelled").map((req) => req.listing_id)
+      );
+      const activeFoods = l.filter(
+        (listing) =>
+          listing.status === "available" &&
+          (!listing.expires_at || new Date(listing.expires_at) > now) &&
+          !activeRequestedIds.has(listing.id)
+      );
+      setListings(activeFoods);
       setRequests(r);
       setOrg(orgRes.data ?? null);
     }).catch(() => {}).finally(() => setLoading(false));
@@ -92,7 +102,8 @@ export default function NGODashboard() {
   const completedRequests = requests.filter((r) => r.status === "confirmed");
   const trackableRequest = requests.find((r) => ["volunteer_accepted", "picked_up"].includes(r.status));
 
-  // Exclude listings this NGO already has requests for
+  // Exclude listings this NGO has ANY request for (active, completed, or cancelled)
+  // This prevents ever re-showing food that was already delivered/completed
   const myRequestedListingIds = new Set(
     requests.filter((r) => r.status !== "cancelled").map((r) => r.listing_id)
   );
@@ -146,13 +157,13 @@ export default function NGODashboard() {
           </div>
         )}
 
-        {/* Requests */}
-        {requests.length > 0 && (
+        {/* Active Requests */}
+        {activeRequests.length > 0 && (
           <>
-            <h2 className="mb-4 text-xl font-semibold flex items-center gap-2"><Package className="h-5 w-5" /> Requests</h2>
+            <h2 className="mb-4 text-xl font-semibold flex items-center gap-2"><Package className="h-5 w-5" /> Active Requests</h2>
             <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {requests.map((req) => (
-                <Card key={req.id} className={req.status === "cancelled" ? "opacity-50" : ""}>
+              {activeRequests.map((req) => (
+                <Card key={req.id}>
                   <CardContent className="p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold line-clamp-1 cursor-pointer hover:text-primary" onClick={() => navigate(`/food/${req.listing_id}`)}>{req.food_listings?.title || "Listing"}</h3>
@@ -188,6 +199,30 @@ export default function NGODashboard() {
               ))}
             </div>
           </>
+        )}
+
+        {/* Completed Requests history — collapsed summary */}
+        {completedRequests.length > 0 && (
+          <details className="mb-8">
+            <summary className="mb-3 cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground select-none">
+              View completed requests ({completedRequests.length})
+            </summary>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {completedRequests.map((req) => (
+                <Card key={req.id} className="opacity-60">
+                  <CardContent className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold line-clamp-1 text-sm">{req.food_listings?.title || "Listing"}</h3>
+                      <Badge className="bg-green-700 text-white shrink-0 text-xs">Completed</Badge>
+                    </div>
+                    {req.food_listings?.pickup_address && (
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3 w-3" />{req.food_listings.pickup_address}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </details>
         )}
 
         {/* Available Food */}

@@ -343,19 +343,18 @@ export default function DonorDashboard() {
           </div>
         )}
 
-        {/* Requests */}
-        {requests.length > 0 && (
+        {/* Active Requests */}
+        {requests.filter(r => !["cancelled","confirmed"].includes(r.status)).length > 0 && (
           <>
-            <h2 className="mb-4 text-xl font-semibold flex items-center gap-2"><Package className="h-5 w-5" /> Requests</h2>
+            <h2 className="mb-4 text-xl font-semibold flex items-center gap-2"><Package className="h-5 w-5" /> Active Requests</h2>
             <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger-children">
-              {requests.map((req) => (
-                <Card key={req.id} className={`animate-fade-in-up transition-shadow hover:shadow-md ${req.status === "cancelled" ? "opacity-50" : ""}`}>
+              {requests.filter(r => !["cancelled","confirmed"].includes(r.status)).map((req) => (
+                <Card key={req.id} className="animate-fade-in-up transition-shadow hover:shadow-md">
                   <CardContent className="p-4 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold line-clamp-1">{req.food_listings?.title || "Listing"}</h3>
                       <Badge className={`${statusColor(req.status)} text-white shrink-0 text-xs`}>{statusLabel(req.status)}</Badge>
                     </div>
-                    {/* Step timeline */}
                     {!["cancelled", "pending"].includes(req.status) && (
                       <RequestTimeline status={req.status} selfPickup={req.self_pickup} volunteerId={req.volunteer_id} />
                     )}
@@ -366,6 +365,28 @@ export default function DonorDashboard() {
               ))}
             </div>
           </>
+        )}
+
+        {/* Past requests — collapsed */}
+        {requests.filter(r => ["cancelled","confirmed"].includes(r.status)).length > 0 && (
+          <details className="mb-8">
+            <summary className="mb-3 cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground select-none">
+              View past requests ({requests.filter(r => ["cancelled","confirmed"].includes(r.status)).length} completed/cancelled)
+            </summary>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {requests.filter(r => ["cancelled","confirmed"].includes(r.status)).map((req) => (
+                <Card key={req.id} className="opacity-60">
+                  <CardContent className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold line-clamp-1 text-sm">{req.food_listings?.title || "Listing"}</h3>
+                      <Badge className={`${statusColor(req.status)} text-white shrink-0 text-xs`}>{statusLabel(req.status)}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{new Date(req.created_at).toLocaleDateString()}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </details>
         )}
 
         {/* My Listings */}

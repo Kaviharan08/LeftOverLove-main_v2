@@ -18,6 +18,7 @@ import {
   volunteerAcceptRequest, markPickedUp, markDelivered,
   updateVolunteerLocation, statusLabel, statusColor, type PickupRequest,
 } from "@/lib/pickup-requests";
+import { getDistance } from "@/lib/food-listings";
 import { MapPin, Truck, CheckCircle, Package, Navigation } from "lucide-react";
 
 export default function VolunteerDashboard() {
@@ -29,7 +30,17 @@ export default function VolunteerDashboard() {
   const [loading, setLoading] = useState(true);
   const [confetti, setConfetti] = useState(false);
   const [prevCompleted, setPrevCompleted] = useState(0);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const locationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Get volunteer's location for distance display
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {}
+    );
+  }, []);
 
   const loadData = useCallback(() => {
     if (!user) return;
@@ -231,6 +242,12 @@ export default function VolunteerDashboard() {
                   </h3>
                   {req.food_listings?.pickup_address && (
                     <p className="flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3 w-3" />{req.food_listings.pickup_address}</p>
+                  )}
+                  {userLocation && req.food_listings?.latitude && req.food_listings?.longitude && (
+                    <p className="flex items-center gap-1 text-xs font-medium text-primary">
+                      <Navigation className="h-3 w-3" />
+                      {getDistance(userLocation.lat, userLocation.lng, req.food_listings.latitude, req.food_listings.longitude).toFixed(1)} km away
+                    </p>
                   )}
                   {req.note && <p className="text-xs text-muted-foreground italic">"{req.note}"</p>}
                   <Button size="sm" className="w-full gap-1 mt-1" onClick={() => handleAccept(req.id)} disabled={!!activeDelivery}>
