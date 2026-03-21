@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   fetchVolunteerAvailableRequests, fetchVolunteerMyRequests,
   volunteerAcceptRequest, markPickedUp, markDelivered,
-  updateVolunteerLocation, statusLabel, statusColor, type PickupRequest,
+  updateVolunteerLocation, verifyDeliveryOtp, statusLabel, statusColor, type PickupRequest,
 } from "@/lib/pickup-requests";
 import { getDistance } from "@/lib/food-listings";
 import { MapPin, Truck, CheckCircle, Package, Navigation } from "lucide-react";
@@ -96,6 +96,10 @@ export default function VolunteerDashboard() {
     }
   };
 
+  const [otpInput, setOtpInput] = useState("");
+  const [otpError, setOtpError] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+
   const handlePickedUp = async (requestId: string) => {
     try {
       await markPickedUp(requestId);
@@ -106,14 +110,25 @@ export default function VolunteerDashboard() {
     }
   };
 
-  const handleDelivered = async (requestId: string) => {
+  const handleVerifyOtp = async (requestId: string) => {
+    if (otpInput.length !== 4) return;
+    setOtpLoading(true);
+    setOtpError(false);
     try {
-      await markDelivered(requestId);
-      toast({ title: "✅ Marked as delivered!" });
-      setConfetti(true);
-      loadData();
+      const success = await verifyDeliveryOtp(requestId, otpInput);
+      if (success) {
+        toast({ title: "✅ OTP Verified! Delivery confirmed!" });
+        setOtpInput("");
+        setConfetti(true);
+        loadData();
+      } else {
+        setOtpError(true);
+        toast({ title: "❌ Wrong OTP", description: "Ask the receiver for the correct code.", variant: "destructive" });
+      }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setOtpLoading(false);
     }
   };
 
@@ -211,9 +226,28 @@ export default function VolunteerDashboard() {
                     </Button>
                   )}
                   {activeDelivery.status === "picked_up" && (
-                    <Button onClick={() => handleDelivered(activeDelivery.id)} className="gap-1 bg-green-600 hover:bg-green-700 text-white">
-                      <CheckCircle className="h-4 w-4" /> Mark Delivered
-                    </Button>
+                    <div className="w-full space-y-3">
+                      <p className="text-sm font-medium text-muted-foreground">Ask the receiver for their 4-digit OTP to confirm delivery:</p>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="text"
+                          maxLength={4}
+                          value={otpInput}
+                          onChange={(e) => { setOtpInput(e.target.value.replace(/\D/g, "")); setOtpError(false); }}
+                          placeholder="Enter 4-digit OTP"
+                          className={`w-36 rounded-md border px-3 py-2 text-center text-lg font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-primary ${otpError ? "border-destructive focus:ring-destructive" : "border-input"}`}
+                        />
+                        <Button
+                          onClick={() => handleVerifyOtp(activeDelivery.id)}
+                          disabled={otpInput.length !== 4 || otpLoading}
+                          className="gap-1 bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                          {otpLoading ? "Verifying..." : "Verify & Deliver"}
+                        </Button>
+                      </div>
+                      {otpError && <p className="text-xs text-destructive">Incorrect OTP. Ask the receiver to check their dashboard.</p>}
+                    </div>
                   )}
                 </div>
               </CardContent>

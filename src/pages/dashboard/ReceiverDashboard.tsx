@@ -70,6 +70,16 @@ export default function ReceiverDashboard() {
     const channel = supabase.channel("receiver-dashboard")
       .on("postgres_changes", { event: "*", schema: "public", table: "pickup_requests" }, () => loadData())
       .on("postgres_changes", { event: "*", schema: "public", table: "food_listings" }, () => loadData())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "food_listings" }, (payload) => {
+        // Real-time alert when new food listing is posted
+        const listing = payload.new as any;
+        if (listing?.status === "available") {
+          toast({
+            title: "🍱 New food available!",
+            description: `"${listing.title || "Food"}" was just posted near you — grab it before it's gone!`,
+          });
+        }
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [user, loadData]);
@@ -257,13 +267,22 @@ export default function ReceiverDashboard() {
                         </p>
                       )}
                       {(req.status === "volunteer_accepted" || req.status === "picked_up") && (
-                        <p className="text-xs text-blue-500 font-medium flex items-center gap-1.5">
-                          <span className="relative flex h-2 w-2">
-                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
-                            <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
-                          </span>
-                          {req.status === "volunteer_accepted" ? "Volunteer is on the way to pick up" : "Food is on the way to you!"}
-                        </p>
+                        <div className="space-y-2">
+                          <p className="text-xs text-blue-500 font-medium flex items-center gap-1.5">
+                            <span className="relative flex h-2 w-2">
+                              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+                              <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+                            </span>
+                            {req.status === "volunteer_accepted" ? "Volunteer is on the way to pick up" : "Food is on the way to you!"}
+                          </p>
+                          {(req as any).delivery_otp && (
+                            <div className="rounded-lg border-2 border-primary/30 bg-primary/5 px-4 py-3 text-center">
+                              <p className="text-xs text-muted-foreground mb-1">Your delivery OTP — share this with the volunteer:</p>
+                              <p className="text-3xl font-bold tracking-widest text-primary">{(req as any).delivery_otp}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Do not share with anyone else</p>
+                            </div>
+                          )}
+                        </div>
                       )}
                       {req.status === "delivered" && (
                         <Button size="sm" onClick={() => handleConfirmDelivery(req)} className="gap-1 bg-green-600 hover:bg-green-700 text-white">

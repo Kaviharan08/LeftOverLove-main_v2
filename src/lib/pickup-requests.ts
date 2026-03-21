@@ -32,9 +32,7 @@ export type PickupRequest = {
 };
 
 const REQUEST_SELECT = "*, food_listings(id, title, pickup_address, image_url, donor_id, status, latitude, longitude)";
-const REQUEST_UPDATE_SELECT = "*"; // Use plain * for updates — joined selects cause 406 on some DB configs
-// Use this simpler select for UPDATE operations to avoid 406 errors from joined table RLS
-const UPDATE_SELECT = "*";
+const REQUEST_UPDATE_SELECT = "*, delivery_otp, otp_verified";
 
 /**
  * Receiver accepts a food listing — no donor approval needed.
@@ -119,9 +117,12 @@ export async function volunteerAcceptRequest(requestId: string, volunteerId: str
     .maybeSingle();
   if (error) throw error;
 
+  // Generate OTP for delivery verification
+  try { await generateDeliveryOtp(requestId); } catch {}
+
   const receiverId = (data as any)?.receiver_id;
   if (receiverId) {
-    await createNotification(receiverId, "volunteer_accepted", "Volunteer assigned!", "A volunteer accepted your delivery request!");
+    await createNotification(receiverId, "volunteer_accepted", "Volunteer assigned!", "A volunteer accepted your delivery — check your OTP for delivery verification!");
   }
   return data;
 }
@@ -277,7 +278,34 @@ export async function fetchAllRequestsAdmin() {
   return data as unknown as PickupRequest[];
 }
 
-// ── Display helpers ────────────────────────────────────────────
+// ── OTP helpers ────────────────────────────────────────────
+
+/** Generate OTP for a delivery — called when volunteer accepts */
+export async function generateDeliveryOtp(requestId: string): Promise<string> {
+  const { data, error } = await supabase.rpc("generate_delivery_otp" as any, { p_request_id: requestId });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Volunteer submits OTP entered by receiver — marks as delivered if correct */
+export async function verifyDeliveryOtp(requestId: string, otp: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("verify_delivery_otp" as any, { p_request_id: requestId, p_otp: otp });
+  if (error) throw error;
+  return data as boolean;
+}
+
+/** Fetch the OTP for a request (only receiver can see it) */
+export async function fetchDeliveryOtp(requestId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("pickup_requests")
+    .select("delivery_otp")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (error) return null;
+  return (data as any)?.delivery_otp ?? null;
+}
+
+
 
 export function statusLabel(status: string) {
   const map: Record<string, string> = {
