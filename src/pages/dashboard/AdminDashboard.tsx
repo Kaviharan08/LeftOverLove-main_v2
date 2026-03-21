@@ -564,7 +564,7 @@ export default function AdminDashboard() {
                       <TableRow>
                         <TableHead>User</TableHead>
                         <TableHead>Subject</TableHead>
-                        <TableHead>Message</TableHead>
+                        <TableHead className="w-[40%]">Message</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Date</TableHead>
                         <TableHead>Actions</TableHead>
@@ -575,7 +575,7 @@ export default function AdminDashboard() {
                         <TableRow key={c.id}>
                           <TableCell className="font-medium text-sm">{c.user_name || "User"}</TableCell>
                           <TableCell className="text-sm">{c.subject}</TableCell>
-                          <TableCell className="max-w-[180px] truncate text-sm text-muted-foreground">{c.message}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground whitespace-pre-wrap break-words max-w-[400px]">{c.message}</TableCell>
                           <TableCell>
                             <Badge className={`${c.status === "open" ? "bg-yellow-500" : "bg-green-500"} text-white text-xs capitalize`}>{c.status}</Badge>
                           </TableCell>

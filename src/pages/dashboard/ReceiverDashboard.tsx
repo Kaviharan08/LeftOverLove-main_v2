@@ -257,7 +257,7 @@ export default function ReceiverDashboard() {
                             <Truck className="h-3 w-3" /> Request Volunteer
                           </Button>
                           <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleCancel(req)}>
-                            <X className="h-3 w-3" />
+                            <X className="h-3 w-3" /> Cancel
                           </Button>
                         </>
                       )}

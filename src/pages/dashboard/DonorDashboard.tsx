@@ -400,69 +400,96 @@ export default function DonorDashboard() {
             description="Your first donation is one click away! Share surplus food with your community."
             action={{ label: "Create First Listing", to: "/food/create" }}
           />
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger-children">
-            {listings.map((listing) => {
-              const hasConfirmedRequest = requests.some((r) => r.listing_id === listing.id && r.status === "confirmed");
-              const hasActiveRequest    = requests.some((r) => r.listing_id === listing.id && !["cancelled", "confirmed"].includes(r.status));
-              const displayStatus = hasConfirmedRequest ? "completed" : hasActiveRequest ? "claimed" : listing.status;
-              const badgeClass =
-                displayStatus === "available"    ? "bg-primary text-primary-foreground" :
-                displayStatus === "completed"    ? "bg-green-600 text-white" :
-                displayStatus === "claimed"      ? "bg-accent text-accent-foreground" :
-                displayStatus === "expired"      ? "bg-destructive text-destructive-foreground" :
-                displayStatus === "expiring_soon"? "bg-yellow-500 text-white" :
-                "bg-secondary text-secondary-foreground";
+        ) : (() => {
+          const activeListing = listings.filter((l) => {
+            const hasConfirmed = requests.some((r) => r.listing_id === l.id && r.status === "confirmed");
+            return !hasConfirmed && l.status !== "expired" && l.status !== "completed";
+          });
+          const pastListings = listings.filter((l) => {
+            const hasConfirmed = requests.some((r) => r.listing_id === l.id && r.status === "confirmed");
+            return hasConfirmed || l.status === "expired" || l.status === "completed";
+          });
 
-              // Expiry warning only for active listings
-              const hoursLeft = listing.expires_at
-                ? (new Date(listing.expires_at).getTime() - Date.now()) / 3600000
-                : null;
-              const isCompleted = displayStatus === "completed";
-              const isUrgent = !isCompleted && hoursLeft !== null && hoursLeft > 0 && hoursLeft <= 24;
+          const renderCard = (listing: typeof listings[0]) => {
+            const hasConfirmedRequest = requests.some((r) => r.listing_id === listing.id && r.status === "confirmed");
+            const hasActiveRequest    = requests.some((r) => r.listing_id === listing.id && !["cancelled", "confirmed"].includes(r.status));
+            const displayStatus = hasConfirmedRequest ? "completed" : hasActiveRequest ? "claimed" : listing.status;
+            const badgeClass =
+              displayStatus === "available"    ? "bg-primary text-primary-foreground" :
+              displayStatus === "completed"    ? "bg-green-600 text-white" :
+              displayStatus === "claimed"      ? "bg-accent text-accent-foreground" :
+              displayStatus === "expired"      ? "bg-destructive text-destructive-foreground" :
+              displayStatus === "expiring_soon"? "bg-yellow-500 text-white" :
+              "bg-secondary text-secondary-foreground";
+            const hoursLeft = listing.expires_at
+              ? (new Date(listing.expires_at).getTime() - Date.now()) / 3600000
+              : null;
+            const isCompleted = displayStatus === "completed";
+            const isUrgent = !isCompleted && hoursLeft !== null && hoursLeft > 0 && hoursLeft <= 24;
 
-              return (
-                <Card key={listing.id} className={`animate-fade-in-up overflow-hidden transition-shadow hover:shadow-lg ${isUrgent ? "border-yellow-400 dark:border-yellow-700" : ""}`}>
-                  {listing.image_url ? (
-                    <img src={listing.image_url} alt={listing.title} className="h-36 w-full object-cover" />
-                  ) : (
-                    <div className="h-36 w-full bg-muted flex items-center justify-center text-4xl">🍽️</div>
+            return (
+              <Card key={listing.id} className={`animate-fade-in-up overflow-hidden transition-shadow hover:shadow-lg ${isUrgent ? "border-yellow-400 dark:border-yellow-700" : ""} ${isCompleted ? "opacity-70" : ""}`}>
+                {listing.image_url ? (
+                  <img src={listing.image_url} alt={listing.title} className="h-36 w-full object-cover" />
+                ) : (
+                  <div className="h-36 w-full bg-muted flex items-center justify-center text-4xl">🍽️</div>
+                )}
+                {isUrgent && (
+                  <div className="bg-yellow-50 dark:bg-yellow-950/30 border-b border-yellow-200 dark:border-yellow-800/40 px-3 py-1.5 flex items-center gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400 shrink-0" />
+                    <span className="text-xs font-medium text-yellow-700 dark:text-yellow-300">
+                      Expires in {Math.ceil(hoursLeft!)}h
+                    </span>
+                  </div>
+                )}
+                <CardContent className="p-4">
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <h3 className="font-semibold line-clamp-1">{listing.title}</h3>
+                    <Badge className={`shrink-0 text-xs capitalize ${badgeClass}`}>{displayStatus}</Badge>
+                  </div>
+                  {(listing.quantity || listing.weight_kg) && (
+                    <p className="mb-1 text-xs text-muted-foreground">
+                      {listing.quantity && `${listing.quantity} items`}
+                      {listing.quantity && listing.weight_kg && " · "}
+                      {listing.weight_kg && `${listing.weight_kg} kg`}
+                    </p>
                   )}
-                  {isUrgent && (
-                    <div className="bg-yellow-50 dark:bg-yellow-950/30 border-b border-yellow-200 dark:border-yellow-800/40 px-3 py-1.5 flex items-center gap-2">
-                      <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400 shrink-0" />
-                      <span className="text-xs font-medium text-yellow-700 dark:text-yellow-300">
-                        Expires in {Math.ceil(hoursLeft!)}h
-                      </span>
+                  {listing.pickup_address && (
+                    <p className={`flex items-center gap-1 text-xs text-muted-foreground ${isCompleted ? "" : "mb-3"}`}><MapPin className="h-3 w-3" />{listing.pickup_address}</p>
+                  )}
+                  {!isCompleted && (
+                    <div className="flex gap-2 mt-3">
+                      <Button size="sm" variant="outline" asChild><Link to={`/food/edit/${listing.id}`}><Edit className="mr-1 h-3 w-3" /> Edit</Link></Button>
+                      <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => handleDelete(listing.id)}><Trash2 className="h-3 w-3" /></Button>
                     </div>
                   )}
-                  <CardContent className="p-4">
-                    <div className="mb-2 flex items-start justify-between gap-2">
-                      <h3 className="font-semibold line-clamp-1">{listing.title}</h3>
-                      <Badge className={`shrink-0 text-xs capitalize ${badgeClass}`}>{displayStatus}</Badge>
-                    </div>
-                    {(listing.quantity || listing.weight_kg) && (
-                      <p className="mb-1 text-xs text-muted-foreground">
-                        {listing.quantity && `${listing.quantity} items`}
-                        {listing.quantity && listing.weight_kg && " · "}
-                        {listing.weight_kg && `${listing.weight_kg} kg`}
-                      </p>
-                    )}
-                    {listing.pickup_address && (
-                      <p className={`flex items-center gap-1 text-xs text-muted-foreground ${isCompleted ? "" : "mb-3"}`}><MapPin className="h-3 w-3" />{listing.pickup_address}</p>
-                    )}
-                    {!isCompleted && (
-                      <div className="flex gap-2 mt-3">
-                        <Button size="sm" variant="outline" asChild><Link to={`/food/edit/${listing.id}`}><Edit className="mr-1 h-3 w-3" /> Edit</Link></Button>
-                        <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => handleDelete(listing.id)}><Trash2 className="h-3 w-3" /></Button>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
+                </CardContent>
+              </Card>
+            );
+          };
+
+          return (
+            <>
+              {activeListing.length > 0 ? (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 stagger-children mb-6">
+                  {activeListing.map(renderCard)}
+                </div>
+              ) : (
+                <p className="text-muted-foreground mb-6">No active listings right now.</p>
+              )}
+              {pastListings.length > 0 && (
+                <details>
+                  <summary className="mb-3 cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground select-none">
+                    View past listings ({pastListings.length} completed/expired)
+                  </summary>
+                  <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {pastListings.map(renderCard)}
+                  </div>
+                </details>
+              )}
+            </>
+          );
+        })()}
       </div>
     </div>
   );
