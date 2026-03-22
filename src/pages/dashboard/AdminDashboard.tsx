@@ -122,7 +122,7 @@ export default function AdminDashboard() {
     setConfirmAction({
       title: "Delete Listing",
       desc: `Are you sure you want to delete "${title}"?`,
-      action: async () => { await deleteListingAdmin(id); toast({ title: "Listing deleted" }); loadData(); },
+      action: async () => { await deleteListingAdmin(id, title); toast({ title: "Listing deleted" }); loadData(); },
     });
   };
 
@@ -495,7 +495,7 @@ export default function AdminDashboard() {
                           <TableCell className="text-sm">{r.reviewer_name}</TableCell>
                           <TableCell className="text-sm">{r.reviewed_name}</TableCell>
                           <TableCell><StarRating value={r.rating} readonly size="sm" /></TableCell>
-                          <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">{r.comment || "—"}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground whitespace-pre-wrap break-words max-w-[350px]">{r.comment || "—"}</TableCell>
                           <TableCell>
                             <Button variant="ghost" size="icon" onClick={() => handleDeleteReview(r.id)}>
                               <Trash2 className="h-4 w-4 text-destructive" />

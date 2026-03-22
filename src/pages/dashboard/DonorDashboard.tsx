@@ -401,19 +401,23 @@ export default function DonorDashboard() {
             action={{ label: "Create First Listing", to: "/food/create" }}
           />
         ) : (() => {
+          const now = Date.now();
           const activeListing = listings.filter((l) => {
             const hasConfirmed = requests.some((r) => r.listing_id === l.id && r.status === "confirmed");
-            return !hasConfirmed && l.status !== "expired" && l.status !== "completed";
+            const actuallyExpired = l.expires_at && new Date(l.expires_at).getTime() < now;
+            return !hasConfirmed && !actuallyExpired && l.status !== "completed";
           });
           const pastListings = listings.filter((l) => {
             const hasConfirmed = requests.some((r) => r.listing_id === l.id && r.status === "confirmed");
-            return hasConfirmed || l.status === "expired" || l.status === "completed";
+            const actuallyExpired = l.expires_at && new Date(l.expires_at).getTime() < now;
+            return hasConfirmed || actuallyExpired || l.status === "completed";
           });
 
           const renderCard = (listing: typeof listings[0]) => {
             const hasConfirmedRequest = requests.some((r) => r.listing_id === listing.id && r.status === "confirmed");
             const hasActiveRequest    = requests.some((r) => r.listing_id === listing.id && !["cancelled", "confirmed"].includes(r.status));
-            const displayStatus = hasConfirmedRequest ? "completed" : hasActiveRequest ? "claimed" : listing.status;
+            const actuallyExpired = listing.expires_at && new Date(listing.expires_at).getTime() < Date.now();
+            const displayStatus = hasConfirmedRequest ? "completed" : actuallyExpired ? "expired" : hasActiveRequest ? "claimed" : listing.status;
             const badgeClass =
               displayStatus === "available"    ? "bg-primary text-primary-foreground" :
               displayStatus === "completed"    ? "bg-green-600 text-white" :
@@ -438,7 +442,7 @@ export default function DonorDashboard() {
                   <div className="bg-yellow-50 dark:bg-yellow-950/30 border-b border-yellow-200 dark:border-yellow-800/40 px-3 py-1.5 flex items-center gap-2">
                     <AlertTriangle className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400 shrink-0" />
                     <span className="text-xs font-medium text-yellow-700 dark:text-yellow-300">
-                      Expires in {Math.ceil(hoursLeft!)}h
+                      Expires in {hoursLeft! < 1 ? `${Math.ceil(hoursLeft! * 60)}min` : `${Math.ceil(hoursLeft!)}h`}
                     </span>
                   </div>
                 )}
@@ -462,6 +466,9 @@ export default function DonorDashboard() {
                       <Button size="sm" variant="outline" asChild><Link to={`/food/edit/${listing.id}`}><Edit className="mr-1 h-3 w-3" /> Edit</Link></Button>
                       <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => handleDelete(listing.id)}><Trash2 className="h-3 w-3" /></Button>
                     </div>
+                  )}
+                  {displayStatus === "expired" && (
+                    <p className="mt-2 text-xs text-muted-foreground">⚠️ Extend the expiry date to make this available again.</p>
                   )}
                 </CardContent>
               </Card>

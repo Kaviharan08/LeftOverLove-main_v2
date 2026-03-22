@@ -134,7 +134,19 @@ export async function fetchAllReviewsAdmin() {
   return reviews.map((r) => ({ ...r, reviewer_name: "User", reviewed_name: "User" }));
 }
 
-export async function deleteListingAdmin(listingId: string) {
+export async function deleteListingAdmin(listingId: string, title?: string) {
+  const { data: { user } } = await supabase.auth.getUser();
   const { error } = await supabase.from("food_listings").delete().eq("id", listingId);
   if (error) throw error;
+  if (user) {
+    try {
+      await (supabase as any).from("admin_audit_log").insert({
+        admin_id: user.id,
+        action: "delete_listing",
+        target_type: "food_listing",
+        target_id: listingId,
+        details: { title: title ?? listingId },
+      });
+    } catch {}
+  }
 }
