@@ -90,7 +90,7 @@ export default function NGOSignup() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 234 567 890" />
+                <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+94" />
               </div>
             </div>
             <div className="space-y-2">
