@@ -133,10 +133,4 @@ Available roles: `donor`, `receiver`, `volunteer`, `ngo`, `admin`
 
 ---
 
-## 📄 License
-
-This project is open source and available under the [MIT License](LICENSE).
-
----
-
 <p align="center">Built with ❤️ to reduce food waste and feed communities.</p>
